@@ -1,0 +1,1354 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Model Metrics Monitor</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='15' fill='%23667eea'/><path d='M20 70 L35 55 L50 60 L65 40 L80 45' stroke='white' stroke-width='6' fill='none' stroke-linecap='round' stroke-linejoin='round'/><circle cx='35' cy='55' r='4' fill='white'/><circle cx='50' cy='60' r='4' fill='white'/><circle cx='65' cy='40' r='4' fill='white'/><circle cx='80' cy='45' r='4' fill='white'/></svg>">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            overflow: hidden;
+            color: #333;
+        }
+
+        .container {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        header {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px 20px;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+
+        h1 {
+            font-size: 18px;
+            color: #667eea;
+            margin: 0;
+        }
+
+        .nav-tabs {
+            display: flex;
+            gap: 12px;
+        }
+
+        .nav-tab {
+            padding: 10px 20px;
+            border: none;
+            background: #f0f0f0;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .nav-tab:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .nav-tab.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            padding: 15px 18px;
+            margin-bottom: 10px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            flex-shrink: 0;
+        }
+
+        .card h2 {
+            font-size: 14px;
+            margin-bottom: 12px;
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 8px;
+        }
+
+        /* Instance Management */
+        .instance-form {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr auto;
+            gap: 10px;
+            margin-bottom: 12px;
+            align-items: end;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group label {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        input, button {
+            padding: 10px 14px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .btn:hover {
+            background: #5568d3;
+        }
+
+        .btn-danger {
+            background: #e74c3c;
+        }
+
+        .btn-danger:hover {
+            background: #c0392b;
+        }
+
+        .btn-sm {
+            padding: 5px 10px;
+            font-size: 14px;
+        }
+
+        .instance-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .instance-table th,
+        .instance-table td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+            font-size: 14px;
+        }
+
+        .instance-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 14px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .status-on {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-off {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        /* Model Tabs */
+        .model-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        .model-tab {
+            padding: 8px 16px;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 18px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .model-tab:hover {
+            border-color: #667eea;
+        }
+
+        .model-tab.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        /* Metrics Grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-top: 10px;
+        }
+
+        /* Metrics Section - Horizontal layout */
+        .metrics-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .metrics-section .card {
+            margin-bottom: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .metrics-section .card h2 {
+            flex-shrink: 0;
+        }
+
+        .metrics-section .metrics-grid {
+            display: grid;
+        }
+
+        .metric-card {
+            background: linear-gradient(135deg, #4c5fd5 0%, #6b21a8 100%);
+            color: white;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .metric-card.success {
+            background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+        }
+
+        .metric-card.warning {
+            background: linear-gradient(135deg, #dc2626 0%, #f43f5e 100%);
+        }
+
+        .metric-card.info {
+            background: linear-gradient(135deg, #0284c7 0%, #0ea5e9 100%);
+        }
+
+        .metric-value {
+            font-size: 20px;
+            font-weight: bold;
+            margin: 6px 0;
+        }
+
+        .metric-label {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .metric-unit {
+            font-size: 14px;
+            opacity: 0.8;
+            display: inline-block;
+            margin-left: 3px;
+            vertical-align: middle;
+        }
+
+        .metric-card > div:not(.metric-label) {
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+        }
+
+        /* Charts */
+        .chart-container {
+            position: relative;
+            height: 350px;
+            margin-top: 15px;
+        }
+
+        .instances-list {
+            margin-top: 10px;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .instances-list h3 {
+            font-size: 14px;
+            margin: 0;
+            margin-right: 10px;
+        }
+
+        .instance-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            background: white;
+            border-radius: 14px;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+
+        .instance-status {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .instance-status.online {
+            background: #28a745;
+            box-shadow: 0 0 6px rgba(40, 167, 69, 0.6);
+        }
+
+        .instance-status.offline {
+            background: #dc3545;
+            box-shadow: 0 0 6px rgba(220, 53, 69, 0.6);
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        /* Chart Tabs */
+        .chart-tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .chart-tab {
+            padding: 10px 20px;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .chart-tab:hover {
+            border-color: #667eea;
+        }
+
+        .chart-tab.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .refresh-btn {
+            background: white;
+            color: #667eea;
+            border: 1px solid #667eea;
+            position: relative;
+            min-width: 100px;
+        }
+
+        .refresh-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .refresh-btn .countdown {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: #ff6b6b;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            font-size: 11px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .spinning {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes number-update {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+            50% {
+                transform: scale(1.15);
+                opacity: 0.8;
+                color: #00f2fe;
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        .metric-value.update-flash {
+            animation: number-update 0.4s ease-out;
+            text-shadow: 0 0 10px rgba(102, 126, 234, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📊 LLM Model Metrics Monitor</h1>
+            <div class="nav-tabs">
+                <button class="nav-tab active" onclick="showPage('dashboard')">监控面板</button>
+                <button class="nav-tab" onclick="showPage('config')">实例配置</button>
+            </div>
+        </header>
+
+        <!-- Config Page -->
+        <div id="config-page" class="hidden" style="flex: 1; overflow-y: auto; overflow-x: hidden;">
+            <div class="card">
+                <h2>添加实例</h2>
+                <div class="instance-form">
+                    <div class="form-group">
+                        <label>实例名称</label>
+                        <input type="text" id="instance-name" placeholder="vllm-instance-1">
+                    </div>
+                    <div class="form-group">
+                        <label>IP 地址</label>
+                        <input type="text" id="instance-host" placeholder="192.168.1.100">
+                    </div>
+                    <div class="form-group">
+                        <label>端口</label>
+                        <input type="number" id="instance-port" value="8000">
+                    </div>
+                    <div class="form-group">
+                        <label>引擎类型</label>
+                        <select id="instance-engine" style="padding: 10px 14px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px;">
+                            <option value="vllm">vLLM</option>
+                            <option value="sglang">SGLang</option>
+                        </select>
+                    </div>
+                    <button class="btn" onclick="addInstance()">添加实例</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>已配置实例</h2>
+                <table class="instance-table">
+                    <thead>
+                        <tr>
+                            <th>名称</th>
+                            <th>地址</th>
+                            <th>引擎</th>
+                            <th>状态</th>
+                            <th>监控</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="instances-tbody">
+                        <tr>
+                            <td colspan="6" class="loading">加载中...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Dashboard Page -->
+        <div id="dashboard-page" style="flex: 1; overflow-y: auto; overflow-x: hidden;">
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h2 style="margin: 0; border: none; padding: 0;">模型监控</h2>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <select id="time-range" onchange="refreshDashboard()" style="padding: 8px 12px; border-radius: 6px; border: 1px solid #ddd; font-size: 14px;">
+                            <option value="5">最近 5 分钟</option>
+                            <option value="30">最近 30 分钟</option>
+                            <option value="60">最近 1 小时</option>
+                            <option value="180">最近 3 小时</option>
+                        </select>
+                        <button class="btn refresh-btn" onclick="refreshDashboard()" style="padding: 8px 14px; font-size: 14px;">
+                            <span id="refresh-icon">🔄</span> 刷新
+                            <span class="countdown" id="refresh-countdown" style="display: none;"></span>
+                        </button>
+                    </div>
+                </div>
+                <div class="model-tabs" id="model-tabs">
+                    <span class="loading">加载模型列表...</span>
+                </div>
+            </div>
+
+            <div id="metrics-container">
+                <div class="loading">请选择模型查看监控数据</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/v1';
+        let currentModel = null;
+        let charts = {};
+        let refreshTimeout = null;
+        let countdownInterval = null;
+        let autoRefreshInterval = null;
+
+        // Page Navigation
+        function showPage(page) {
+            document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+
+            document.getElementById('config-page').classList.toggle('hidden', page !== 'config');
+            document.getElementById('dashboard-page').classList.toggle('hidden', page !== 'dashboard');
+
+            if (page === 'config') {
+                loadInstances();
+            } else {
+                loadModels();
+            }
+        }
+
+        // Instance Management
+        async function loadInstances() {
+            try {
+                const response = await fetch(`${API_BASE}/instances/`);
+                const instances = await response.json();
+                renderInstances(instances);
+            } catch (error) {
+                console.error('Failed to load instances:', error);
+                document.getElementById('instances-tbody').innerHTML = 
+                    '<tr><td colspan="5">加载失败</td></tr>';
+            }
+        }
+
+        function renderInstances(instances) {
+            const tbody = document.getElementById('instances-tbody');
+            
+            if (instances.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">暂无配置的实例</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = instances.map(inst => {
+                const engineType = inst.engine || 'vllm';
+                const engineLabel = engineType === 'sglang' ? 'SGLang' : 'vLLM';
+                const engineClass = engineType === 'sglang' ? 'background: #ff6b6b;' : 'background: #667eea;';
+                
+                return `
+                <tr>
+                    <td>${inst.name}</td>
+                    <td>${inst.host}:${inst.port}</td>
+                    <td><span style="color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; ${engineClass}">${engineLabel}</span></td>
+                    <td><span class="status-badge ${inst.enabled ? 'status-on' : 'status-off'}">${inst.enabled ? '启用' : '禁用'}</span></td>
+                    <td>
+                        <button class="btn btn-sm ${inst.enabled ? 'btn-danger' : ''}" onclick="toggleInstance('${inst.id}', ${!inst.enabled})">
+                            ${inst.enabled ? '停止监控' : '开始监控'}
+                        </button>
+                    </td>
+                    <td>
+                        <button class="btn btn-sm btn-danger" onclick="deleteInstance('${inst.id}')">删除</button>
+                    </td>
+                </tr>
+            `}).join('');
+        }
+
+        async function addInstance() {
+            const name = document.getElementById('instance-name').value.trim();
+            const host = document.getElementById('instance-host').value.trim();
+            const port = parseInt(document.getElementById('instance-port').value);
+            const engine = document.getElementById('instance-engine').value;
+
+            if (!name || !host) {
+                alert('请填写实例名称和IP地址');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/instances/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, host, port, engine })
+                });
+
+                if (response.ok) {
+                    document.getElementById('instance-name').value = '';
+                    document.getElementById('instance-host').value = '';
+                    document.getElementById('instance-port').value = '8000';
+                    document.getElementById('instance-engine').value = 'vllm';
+                    loadInstances();
+                } else {
+                    alert('添加失败');
+                }
+            } catch (error) {
+                console.error('Failed to add instance:', error);
+                alert('添加失败');
+            }
+        }
+
+        async function toggleInstance(id, enabled) {
+            try {
+                await fetch(`${API_BASE}/instances/${id}/toggle?enabled=${enabled}`, { method: 'POST' });
+                loadInstances();
+            } catch (error) {
+                console.error('Failed to toggle instance:', error);
+            }
+        }
+
+        async function deleteInstance(id) {
+            if (!confirm('确定要删除这个实例吗?')) return;
+
+            try {
+                await fetch(`${API_BASE}/instances/${id}`, { method: 'DELETE' });
+                loadInstances();
+            } catch (error) {
+                console.error('Failed to delete instance:', error);
+            }
+        }
+
+        // Dashboard
+        async function loadModels() {
+            try {
+                // Cancel previous request if exists
+                if (modelsAbortController) {
+                    modelsAbortController.abort();
+                }
+
+                modelsAbortController = new AbortController();
+                const signal = modelsAbortController.signal;
+
+                // Fetch instances with status
+                const response = await fetch(`${API_BASE}/vllm/instances-with-status`, {
+                    signal: signal
+                });
+                const data = await response.json();
+                renderModelTabs(data.instances);
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.error('Failed to load models:', error);
+                    document.getElementById('model-tabs').innerHTML = '<span class="loading">加载失败</span>';
+                }
+            } finally {
+                modelsAbortController = null;
+            }
+        }
+
+        function renderModelTabs(instances) {
+            const container = document.getElementById('model-tabs');
+
+            if (instances.length === 0) {
+                container.innerHTML = '<span class="loading">暂无模型数据,请先配置并启用vLLM实例</span>';
+                return;
+            }
+
+            // Group by model name (for online instances) or show individual offline instances
+            const onlineInstances = instances.filter(i => i.online && i.model_name);
+            const offlineInstances = instances.filter(i => !i.online);
+
+            // Group online instances by model name
+            const modelGroups = {};
+            onlineInstances.forEach(inst => {
+                const modelName = inst.model_name;
+                if (!modelGroups[modelName]) {
+                    modelGroups[modelName] = [];
+                }
+                modelGroups[modelName].push(inst);
+            });
+
+            // Build display items
+            let displayItems = [];
+
+            // Add online model groups
+            Object.keys(modelGroups).forEach(modelName => {
+                const instList = modelGroups[modelName];
+                const isAllOnline = instList.every(i => i.online);
+
+                displayItems.push({
+                    type: 'model',
+                    name: modelName,
+                    online: isAllOnline,
+                    isGroup: instList.length > 1,
+                    instanceCount: instList.length
+                });
+            });
+
+            // Add offline instances as individual items
+            offlineInstances.forEach(inst => {
+                displayItems.push({
+                    type: 'instance',
+                    name: inst.name,
+                    online: false,
+                    instanceId: inst.id,
+                    isGroup: false
+                });
+            });
+
+            if (displayItems.length === 0) {
+                container.innerHTML = '<span class="loading">暂无配置的实例</span>';
+                return;
+            }
+
+            // Get first online model name
+            const firstOnlineModel = Object.keys(modelGroups)[0];
+
+            // Render tabs
+            container.innerHTML = displayItems.map(item => {
+                let statusIcon = '';
+                if (item.online) {
+                    statusIcon = '<span style="display:inline-block;width:8px;height:8px;background:#28a745;border-radius:50%;margin-right:4px;"></span>';
+                } else {
+                    statusIcon = '<span style="display:inline-block;width:8px;height:8px;background:#dc3545;border-radius:50%;margin-right:4px;"></span>';
+                }
+
+                const displayText = item.isGroup ? `${item.name} (${item.instanceCount})` : item.name;
+                const onClickAttr = item.online ? `onclick="selectModel('${item.name}')"` : 'onclick="selectOfflineInstance(this)"';
+
+                return `
+                    <button class="model-tab ${item.name === currentModel ? 'active' : ''}" ${onClickAttr}>
+                        ${statusIcon}${displayText}
+                    </button>
+                `;
+            }).join('');
+
+            // Auto-select first online model if nothing selected
+            if (!currentModel && firstOnlineModel) {
+                selectModel(firstOnlineModel);
+            }
+        }
+
+        function selectModel(model) {
+            currentModel = model;
+            metricsInitialized = false;
+            currentChart = 'throughput';
+            // Update active state for model tabs
+            document.querySelectorAll('.model-tab').forEach(tab => {
+                const tabName = tab.textContent.trim().split(' (')[0]; // Remove count if present
+                tab.classList.toggle('active', tabName === model);
+            });
+            loadModelMetrics();
+        }
+
+        function selectOfflineInstance(btnElement) {
+            // Show message for offline instances
+            const container = document.getElementById('metrics-container');
+            container.innerHTML = `
+                <div class="card" style="text-align: center; padding: 40px;">
+                    <h2 style="margin-bottom: 20px;">实例离线</h2>
+                    <p style="color: #666; margin-bottom: 10px;">该实例当前无法连接，无法获取监控数据。</p>
+                    <p style="color: #999; font-size: 14px;">请检查实例服务是否正常运行</p>
+                </div>
+            `;
+
+            // Update active state
+            document.querySelectorAll('.model-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            btnElement.classList.add('active');
+        }
+
+        let currentChart = 'throughput';
+        let modelsAbortController = null;
+        let metricsAbortController = null;
+
+        function switchChart(chartType) {
+            currentChart = chartType;
+            document.querySelectorAll('.chart-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            document.getElementById('throughput-chart').parentElement.style.display = chartType === 'throughput' ? 'block' : 'none';
+            document.getElementById('requests-chart').parentElement.style.display = chartType === 'requests' ? 'block' : 'none';
+            document.getElementById('cache-chart').parentElement.style.display = chartType === 'cache' ? 'block' : 'none';
+        }
+
+        let metricsInitialized = false;
+        let instancesData = [];
+
+        async function loadModelMetrics() {
+            if (!currentModel) return;
+
+            // Cancel previous metrics request if exists
+            if (metricsAbortController) {
+                metricsAbortController.abort();
+            }
+
+            // Create new abort controller for this request
+            metricsAbortController = new AbortController();
+            const signal = metricsAbortController.signal;
+
+            const minutes = document.getElementById('time-range').value;
+            const container = document.getElementById('metrics-container');
+
+            // Only show loading on first load
+            if (!metricsInitialized) {
+                container.innerHTML = '<div class="loading">加载中...</div>';
+            }
+
+            try {
+                // Fetch instances with status
+                const instResponse = await fetch(`${API_BASE}/vllm/instances-with-status`, {
+                    signal: signal
+                });
+                const instData = await instResponse.json();
+                instancesData = instData.instances;
+
+                // Fetch aggregated metrics
+                const aggResponse = await fetch(`${API_BASE}/vllm/models/${encodeURIComponent(currentModel)}/aggregated?minutes=${minutes}`, {
+                    signal: signal
+                });
+                const aggData = await aggResponse.json();
+
+                // Fetch raw metrics for charts
+                const metricsResponse = await fetch(`${API_BASE}/vllm/models/${encodeURIComponent(currentModel)}/metrics?minutes=${minutes}`, {
+                    signal: signal
+                });
+                const metricsData = await metricsResponse.json();
+
+                if (!metricsInitialized) {
+                    renderMetricsSkeleton(aggData.error ? {model_name: currentModel} : aggData);
+                    metricsInitialized = true;
+                }
+                updateMetricsValues(aggData.error ? {error: aggData.error} : aggData, metricsData.metrics || []);
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.error('Failed to load metrics:', error);
+                    if (!metricsInitialized) {
+                        container.innerHTML = '<div class="loading">加载失败</div>';
+                    }
+                }
+            } finally {
+                metricsAbortController = null;
+            }
+        }
+
+        function renderMetricsSkeleton(aggData) {
+            const container = document.getElementById('metrics-container');
+
+            const metricsHtml = `
+                <div class="metrics-section">
+                    <div class="card">
+                        <h2>核心指标</h2>
+                        <div class="metrics-grid">
+                            <div class="metric-card">
+                                <div class="metric-label">平均 Prompt 吞吐量</div>
+                                <div>
+                                    <span class="metric-value" id="metric-prompt-throughput">-</span>
+                                    <span class="metric-unit">tokens/s</span>
+                                </div>
+                            </div>
+                            <div class="metric-card success">
+                                <div class="metric-label">平均生成吞吐量</div>
+                                <div>
+                                    <span class="metric-value" id="metric-gen-throughput">-</span>
+                                    <span class="metric-unit">tokens/s</span>
+                                </div>
+                            </div>
+                            <div class="metric-card info">
+                                <div class="metric-label">运行中请求</div>
+                                <div>
+                                    <span class="metric-value" id="metric-running-requests">-</span>
+                                    <span class="metric-unit">个</span>
+                                </div>
+                            </div>
+                            <div class="metric-card warning">
+                                <div class="metric-label">等待中请求</div>
+                                <div>
+                                    <span class="metric-value" id="metric-waiting-requests">-</span>
+                                    <span class="metric-unit">个</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h2>缓存指标</h2>
+                        <div class="metrics-grid">
+                            <div class="metric-card">
+                                <div class="metric-label">GPU KV Cache 使用率</div>
+                                <div>
+                                    <span class="metric-value" id="metric-gpu-cache">-</span>
+                                    <span class="metric-unit">%</span>
+                                </div>
+                            </div>
+                            <div class="metric-card success">
+                                <div class="metric-label">前缀缓存命中率</div>
+                                <div>
+                                    <span class="metric-value" id="metric-prefix-cache">-</span>
+                                    <span class="metric-unit">%</span>
+                                </div>
+                            </div>
+                            <div class="metric-card info">
+                                <div class="metric-label">外部前缀缓存命中率</div>
+                                <div>
+                                    <span class="metric-value" id="metric-ext-prefix-cache">-</span>
+                                    <span class="metric-unit">%</span>
+                                </div>
+                            </div>
+                            <div class="metric-card warning">
+                                <div class="metric-label">多模态缓存命中率</div>
+                                <div>
+                                    <span class="metric-value" id="metric-mm-cache">-</span>
+                                    <span class="metric-unit">%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h2>延迟指标</h2>
+                        <div class="metrics-grid" style="grid-template-columns: repeat(2, 1fr);">
+                            <div class="metric-card">
+                                <div class="metric-label">平均 TTFT</div>
+                                <div>
+                                    <span class="metric-value" id="metric-ttft">-</span>
+                                    <span class="metric-unit">ms</span>
+                                </div>
+                            </div>
+                            <div class="metric-card success">
+                                <div class="metric-label">平均 TPOT</div>
+                                <div>
+                                    <span class="metric-value" id="metric-tpot">-</span>
+                                    <span class="metric-unit">ms</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>实例列表</h2>
+                    <div class="instances-list" id="instances-list">
+                        <span>加载中...</span>
+                    </div>
+                </div>
+
+                <div class="card" style="display: flex; flex-direction: column;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <h2 style="margin: 0; border: none; padding: 0;">趋势图表</h2>
+                        <div class="chart-tabs">
+                            <button class="chart-tab active" onclick="switchChart('throughput')">吞吐量</button>
+                            <button class="chart-tab" onclick="switchChart('requests')">请求队列</button>
+                            <button class="chart-tab" onclick="switchChart('cache')">缓存使用</button>
+                        </div>
+                    </div>
+                    <div class="chart-container" style="display: block;">
+                        <canvas id="throughput-chart"></canvas>
+                    </div>
+                    <div class="chart-container" style="display: none;">
+                        <canvas id="requests-chart"></canvas>
+                    </div>
+                    <div class="chart-container" style="display: none;">
+                        <canvas id="cache-chart"></canvas>
+                    </div>
+                </div>
+            `;
+
+            container.innerHTML = metricsHtml;
+        }
+
+        function updateMetricsValues(aggData, rawMetrics) {
+            // Check if there's error (no data)
+            const hasError = aggData.error;
+            const hasData = !hasError;
+
+            // Update core metrics with animation
+            updateMetricWithAnimation('metric-prompt-throughput', hasData ? (aggData.avg_prompt_throughput || 0).toFixed(2) : 'N/A');
+            updateMetricWithAnimation('metric-gen-throughput', hasData ? (aggData.avg_generation_throughput || 0).toFixed(2) : 'N/A');
+            updateMetricWithAnimation('metric-running-requests', hasData ? (aggData.total_running_requests || 0) : 'N/A');
+            updateMetricWithAnimation('metric-waiting-requests', hasData ? (aggData.total_waiting_requests || 0) : 'N/A');
+
+            // Update cache metrics
+            updateMetricWithAnimation('metric-gpu-cache', hasData ? ((aggData.avg_gpu_kv_cache_usage || 0) * 100).toFixed(1) : 'N/A');
+            updateMetricWithAnimation('metric-prefix-cache', hasData ? ((aggData.avg_prefix_cache_hit_rate || 0) * 100).toFixed(1) : 'N/A');
+            updateMetricWithAnimation('metric-ext-prefix-cache', hasData ? ((aggData.avg_external_prefix_cache_hit_rate || 0) * 100).toFixed(1) : 'N/A');
+            updateMetricWithAnimation('metric-mm-cache', hasData ? ((aggData.avg_mm_cache_hit_rate || 0) * 100).toFixed(1) : 'N/A');
+
+            // Update latency metrics
+            updateMetricWithAnimation('metric-ttft', hasData && aggData.avg_ttft ? aggData.avg_ttft.toFixed(2) : 'N/A');
+            updateMetricWithAnimation('metric-tpot', hasData && aggData.avg_tpot ? aggData.avg_tpot.toFixed(2) : 'N/A');
+
+            // Update instances list - show all instances with their status
+            const instancesList = document.getElementById('instances-list');
+            if (instancesList) {
+                // Filter instances for current model
+                const currentModelInstances = instancesData.filter(inst => inst.model_name === currentModel);
+
+                if (currentModelInstances.length > 0) {
+                    instancesList.innerHTML = currentModelInstances.map(inst => {
+                        const engineType = inst.engine || 'vllm';
+                        const engineLabel = engineType === 'sglang' ? 'SGLang' : 'vLLM';
+                        const engineClass = engineType === 'sglang' ? 'background: #ff6b6b;' : 'background: #667eea;';
+                        
+                        return `
+                        <div class="instance-item">
+                            <span class="instance-status ${inst.online ? 'online' : 'offline'}"></span>
+                            ${inst.name} (${inst.host}:${inst.port})
+                            <span style="color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; ${engineClass} margin-left: 4px;">${engineLabel}</span>
+                        </div>
+                    `}).join('');
+                } else {
+                    instancesList.innerHTML = '<span>该模型没有关联的实例</span>';
+                }
+            }
+
+            // Update charts
+            if (hasData) {
+                renderCharts(rawMetrics);
+            } else {
+                // Clear charts if no data
+                Object.values(charts).forEach(chart => chart.destroy());
+                charts = {};
+            }
+        }
+
+        function updateMetricWithAnimation(elementId, newValue) {
+            const element = document.getElementById(elementId);
+            const oldValue = element.textContent;
+            
+            if (oldValue !== newValue) {
+                element.textContent = newValue;
+                element.classList.remove('update-flash');
+                // Force reflow
+                void element.offsetWidth;
+                element.classList.add('update-flash');
+            }
+        }
+
+        function renderCharts(metrics) {
+            // Destroy existing charts
+            Object.values(charts).forEach(chart => chart.destroy());
+            charts = {};
+
+            if (!metrics || metrics.length === 0) return;
+
+            const labels = metrics.map(m => {
+                const date = new Date(m.timestamp);
+                // 自动使用浏览器时区显示时间（ES中存储的是UTC时间）
+                return date.toLocaleTimeString('zh-CN', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+            });
+
+            // Calculate Y-axis max values for better scale
+            const promptThroughputData = metrics.map(m => m.avg_prompt_throughput);
+            const genThroughputData = metrics.map(m => m.avg_generation_throughput);
+            const maxThroughput = Math.max(...promptThroughputData, ...genThroughputData, 0.1);
+            const throughputMax = Math.ceil(maxThroughput * 1.2 / 10) * 10;
+
+            const runningData = metrics.map(m => m.running_requests);
+            const waitingData = metrics.map(m => m.waiting_requests);
+            const maxRequests = Math.max(...runningData, ...waitingData, 1);
+            const requestsMax = Math.ceil(maxRequests * 1.2);
+
+            // Throughput Chart
+            const throughputCtx = document.getElementById('throughput-chart').getContext('2d');
+            charts.throughput = new Chart(throughputCtx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Prompt 吞吐量',
+                            data: promptThroughputData,
+                            borderColor: '#667eea',
+                            backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        },
+                        {
+                            label: '生成吞吐量',
+                            data: genThroughputData,
+                            borderColor: '#11998e',
+                            backgroundColor: 'rgba(17, 153, 142, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                font: { size: 14 },
+                                boxWidth: 14,
+                                padding: 12
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: throughputMax,
+                            title: {
+                                display: true,
+                                text: 'tokens/s',
+                                font: { size: 12 }
+                            },
+                            ticks: { font: { size: 13 }, padding: 8 }
+                        },
+                        x: {
+                            ticks: { font: { size: 13 }, padding: 8 }
+                        }
+                    }
+                }
+            });
+
+            // Requests Chart
+            const requestsCtx = document.getElementById('requests-chart').getContext('2d');
+            charts.requests = new Chart(requestsCtx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: '运行中',
+                            data: runningData,
+                            borderColor: '#4facfe',
+                            backgroundColor: 'rgba(79, 172, 254, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        },
+                        {
+                            label: '等待中',
+                            data: waitingData,
+                            borderColor: '#f5576c',
+                            backgroundColor: 'rgba(245, 87, 108, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                font: { size: 14 },
+                                boxWidth: 14,
+                                padding: 12
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: requestsMax,
+                            title: {
+                                display: true,
+                                text: '请求数',
+                                font: { size: 12 }
+                            },
+                            ticks: {
+                                stepSize: 1,
+                                font: { size: 13 },
+                                padding: 8
+                            }
+                        },
+                        x: {
+                            ticks: { font: { size: 13 }, padding: 8 }
+                        }
+                    }
+                }
+            });
+
+            // Cache Chart
+            const cacheCtx = document.getElementById('cache-chart').getContext('2d');
+            charts.cache = new Chart(cacheCtx, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'GPU KV Cache',
+                            data: metrics.map(m => (m.gpu_kv_cache_usage || 0) * 100),
+                            borderColor: '#667eea',
+                            tension: 0.4
+                        },
+                        {
+                            label: '前缀缓存命中率',
+                            data: metrics.map(m => (m.prefix_cache_hit_rate || 0) * 100),
+                            borderColor: '#11998e',
+                            tension: 0.4
+                        },
+                        {
+                            label: '外部前缀缓存命中率',
+                            data: metrics.map(m => (m.external_prefix_cache_hit_rate || 0) * 100),
+                            borderColor: '#4facfe',
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                font: { size: 14 },
+                                boxWidth: 14,
+                                padding: 12
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            title: {
+                                display: true,
+                                text: '百分比 (%)',
+                                font: { size: 12 }
+                            },
+                            ticks: {
+                                callback: value => value + '%',
+                                font: { size: 13 },
+                                padding: 8
+                            }
+                        },
+                        x: {
+                            ticks: { font: { size: 13 }, padding: 8 }
+                        }
+                    }
+                }
+            });
+        }
+
+        function refreshDashboard() {
+            // Cancel any pending refresh request
+            if (refreshTimeout) {
+                clearTimeout(refreshTimeout);
+            }
+
+            const icon = document.getElementById('refresh-icon');
+            icon.classList.add('spinning');
+
+            // Debounce with 500ms delay to prevent rapid clicks
+            refreshTimeout = setTimeout(() => {
+                if (currentModel) {
+                    loadModelMetrics().finally(() => {
+                        setTimeout(() => {
+                            icon.classList.remove('spinning');
+                            startCountdown();
+                        }, 500);
+                    });
+                } else {
+                    loadModels();
+                    setTimeout(() => {
+                        icon.classList.remove('spinning');
+                        startCountdown();
+                    }, 500);
+                }
+            }, 500);
+        }
+
+        function startCountdown() {
+            // Clear existing countdown
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+            }
+
+            const countdownElement = document.getElementById('refresh-countdown');
+            const AUTO_REFRESH_SECONDS = 30;
+            let seconds = AUTO_REFRESH_SECONDS;
+
+            countdownElement.style.display = 'flex';
+            countdownElement.textContent = seconds;
+
+            countdownInterval = setInterval(() => {
+                seconds--;
+                if (seconds <= 0) {
+                    countdownElement.style.display = 'none';
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                    
+                    // Auto refresh when countdown reaches 0
+                    if (currentModel && !document.getElementById('dashboard-page').classList.contains('hidden')) {
+                        refreshDashboard();
+                    }
+                } else {
+                    countdownElement.textContent = seconds;
+                }
+            }, 1000);
+        }
+
+        // Check Elasticsearch availability
+        async function checkHealth() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                return data.elasticsearch === 'available';
+            } catch (error) {
+                console.error('Health check failed:', error);
+                return false;
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Check Elasticsearch first
+            const esAvailable = await checkHealth();
+
+            if (!esAvailable) {
+                // Show warning and load instances config page
+                console.warn('Elasticsearch not available');
+                document.getElementById('model-tabs').innerHTML =
+                    '<span class="loading" style="background: #fff3cd; color: #856404; padding: 10px; border-radius: 6px;">⚠️ Elasticsearch 不可用，监控数据功能受限。请配置 Elasticsearch 或使用"实例配置"页签</span>';
+            }
+
+            loadModels();
+            refreshDashboard();
+            // Start countdown for auto refresh
+            startCountdown();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # Elasticsearch 8.x
+  elasticsearch8:
+    image: base/elasticsearch:8.18.2
+    container_name: elasticsearch8
+    environment:
+      - discovery.type=single-node
+      - network.host=0.0.0.0
+      - xpack.security.enabled=false  # 重要：为简化部署，此处禁用安全功能。生产环境请勿使用！
+      - ES_JAVA_OPTS=-Xms10g -Xmx50g   # 根据您的服务器资源调整内存
+      # 禁用自动生成的随机密码
+      - xpack.security.enrollment.enabled=false
+      # 禁用 SSL
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    networks:
+      - elastic_net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  # LLM Monitor Application
+  llm-monitor:
+    image: llms/llm-monitor:latest
+    container_name: llm-monitor
+    environment:
+      # Elasticsearch Configuration
+      - ELASTICSEARCH_URL=http://elasticsearch8:9200
+      # Metrics collection interval (seconds)
+      - COLLECTION_INTERVAL=10
+      # Data retention days
+      - RETENTION_DAYS=30
+      # Debug mode
+      - DEBUG=false
+    volumes:
+      # Mount instance configuration file from NFS share
+      - /data/nfsshare/llm-monitor/config/instances.json:/app/config/instances.json
+    ports:
+      - "8000:8000"
+    depends_on:
+      elasticsearch8:
+        condition: service_healthy
+    networks:
+      - elastic_net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+volumes:
+  es_data:
+    driver: local
+
+networks:
+  elastic_net:
+    driver: bridge
